@@ -1,0 +1,33 @@
+parameters:
+  jobName: ""
+  vmImage: ""
+  environment: ""
+  azureSubscription: ""
+  namespace: ""
+  aksCommonName: ""
+  locationShort: ""
+
+jobs:
+- job: ${{ parameters.jobName }}
+  condition: and(succeeded(), eq(variables['${{ parameters.environment }}EnvEnabled'], true))
+  variables:
+    containerRegistryShort: "acr${{ parameters.environment }}${{ parameters.locationShort }}${{ parameters.aksCommonName }}"
+    containerRegistry: "acr${{ parameters.environment }}${{ parameters.locationShort }}${{ parameters.aksCommonName }}.azurecr.io"
+    resourceGroup: "rg-${{ parameters.environment }}-${{ parameters.locationShort }}-${{ parameters.aksCommonName }}"
+  displayName: Build ${{ parameters.environment }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  continueOnError: false
+  steps:
+
+  - task: AzureCLI@1
+    displayName: 'Build and push container'
+    inputs:
+      azureSubscription: '${{ parameters.azureSubscription }}'
+      addSpnToEnvironment: true
+      scriptLocation: inlineScript
+      inlineScript: |
+        docker build --no-cache --build-arg IMAGE_VERSION="$(Build.BuildId)" --build-arg IMAGE_CREATE_DATE="`date -u +"%Y-%m-%dT%H:%M:%SZ"`" --build-arg IMAGE_SOURCE_REVISION="`git rev-parse HEAD`" -f Dockerfile -t "hello-kubernetes:$(Build.BuildId)" .
+        docker tag hello-kubernetes:$(Build.BuildId) $(containerRegistry)/${{ parameters.namespace }}/hello-kubernetes:$(Build.BuildId)
+        az acr login -n $(containerRegistryShort)
+        docker push $(containerRegistry)/${{ parameters.namespace }}/hello-kubernetes:$(Build.BuildId)
