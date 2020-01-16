@@ -1,0 +1,30 @@
+variables:
+  - group: terraform-encryption
+  - name: devEnvEnabled
+    value: true
+  - name: qaEnvEnabled
+    value: false
+  - name: prodEnvEnabled
+    value: false
+  - name: tfVersion
+    value: "0.12.19"
+  - name: vmImage
+    value: "ubuntu-latest"
+  - name: tfFolderName
+    value: "tf-team1"
+  - name: namespace
+    value: "team1"
+
+name: $(Build.BuildId)
+
+trigger:
+  batch: true
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - .ci/terraform/tf-team1
+
+stages:
+  - template: templates/pipeline.yml

@@ -1,0 +1,57 @@
+parameters:
+  deployment: ""
+  vmImage: ""
+  environment: ""
+  azureSubscription: ""
+  namespace: ""
+  aksCommonName: ""
+  locationShort: ""
+
+jobs:
+- deployment: ${{ parameters.deployment }}
+  condition: and(succeeded(), eq(variables['${{ parameters.environment }}EnvEnabled'], true))
+  displayName: Deploy to ${{ parameters.environment }}
+  variables:
+    containerRegistryShort: "acr${{ parameters.environment }}${{ parameters.locationShort }}${{ parameters.aksCommonName }}"
+    containerRegistry: "acr${{ parameters.environment }}${{ parameters.locationShort }}${{ parameters.aksCommonName }}.azurecr.io"
+    resourceGroup: "rg-${{ parameters.environment }}-${{ parameters.locationShort }}-${{ parameters.aksCommonName }}"
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  continueOnError: false
+  environment: ${{ parameters.namespace }}-${{ parameters.environment }}
+  strategy: 
+    runOnce:
+      deploy:
+        steps:
+        - checkout: self
+          displayName: Get sources
+        
+        - task: DownloadSecureFile@1
+          name: kubeConfig
+          displayName: Download secure file (kube config)
+          inputs:
+            secureFile: 'kubeconfig-${{ parameters.namespace }}-${{ parameters.environment }}'
+
+        - script: |
+            KUBECTL_CONFIGURATION=$(base64 -d $(kubeConfig.secureFilePath))
+            echo $KUBECTL_CONFIGURATION > $(kubeConfig.secureFilePath)
+            mkdir ~/.kube/
+            ln -s $(kubeConfig.secureFilePath) ~/.kube/config
+          displayName: Configure kubectl
+            
+        - task: AzureCLI@1
+          displayName: 'Deploy container'
+          inputs:
+            azureSubscription: '${{ parameters.azureSubscription }}'
+            addSpnToEnvironment: true
+            scriptLocation: inlineScript
+            inlineScript: |
+              cat .ci/manifests/hello-kubernetes.yml \
+                | sed "s|#{REPLICAS}#|1|g" \
+                | sed "s|#{CONTAINER_IMAGE}#|$(containerRegistry)/${{ parameters.namespace }}/hello-kubernetes:$(Build.BuildId)|g" \
+                | sed "s|#{VERSION}#|$(Build.BuildId)|g" \
+                | sed "s|#{APP}#|hello-kubernetes|g" \
+                | sed "s|#{DOMAIN}#|tflab-${{ parameters.environment }}.xenit.io|g" \
+                > /tmp/manifest.yml
+              cat /tmp/manifest.yml
+              kubectl -n ${{ parameters.namespace }} apply -f /tmp/manifest.yml

@@ -1,0 +1,26 @@
+variables:
+  - name: devEnvEnabled
+    value: true
+  - name: qaEnvEnabled
+    value: false
+  - name: prodEnvEnabled
+    value: false
+  - name: vmImage
+    value: "ubuntu-latest"
+  - name: namespace
+    value: "team1"
+  - name: aksCommonName
+    value: aks
+  - name: locationShort
+    value: we
+
+name: $(Build.BuildId)
+
+trigger:
+  batch: true
+  branches:
+    include:
+      - master
+
+stages:
+  - template: templates/pipeline.yml

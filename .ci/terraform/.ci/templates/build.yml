@@ -1,0 +1,44 @@
+parameters:
+  jobName: ""
+  vmImage: ""
+  environment: ""
+  azureSubscription: ""
+  namespace: ""
+
+jobs:
+- job: ${{ parameters.jobName }}
+  condition: and(succeeded(), eq(variables['${{ parameters.environment }}EnvEnabled'], true))
+  displayName: Build ${{ parameters.environment }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  continueOnError: false
+  steps:
+
+  - task: DownloadSecureFile@1
+    name: kubeConfig
+    displayName: Download secure file (kube config)
+    inputs:
+      secureFile: 'kubeconfig-${{ parameters.namespace }}-${{ parameters.environment }}'
+
+  - script: |
+      KUBECTL_CONFIGURATION=$(base64 -d $(kubeConfig.secureFilePath))
+      echo $KUBECTL_CONFIGURATION > $(kubeConfig.secureFilePath)
+      mkdir ~/.kube/
+      ln -s $(kubeConfig.secureFilePath) ~/.kube/config
+    displayName: Configure kubectl
+
+  - task: AzureCLI@1
+    displayName: 'Build task'
+    inputs:
+      azureSubscription: '${{ parameters.azureSubscription }}'
+      addSpnToEnvironment: true
+      scriptLocation: inlineScript
+      inlineScript: "pwsh .ci/terraform/.ci/Invoke-PipelineTask.ps1 -tfFolderName '$(tfFolderName)' -azureDevOps -build -tfVersion $(tfVersion) -environmentShort ${{ parameters.environment }} -artifactPath '$(Build.ArtifactStagingDirectory)'"
+    env:
+      tfEncPassword: $(terraformEncryptionSecret)
+  
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish artifact'
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifactName: '${{ parameters.environment }}'
